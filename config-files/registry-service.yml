@@ -1,0 +1,41 @@
+server:
+  port: ${REGISTRY_SERVICE_PORT:8082}
+
+spring:
+  security:
+    user:
+      name: ${REGISTRY_SERVICE_USER:registry}
+      password: ${REGISTRY_SERVICE_PASSWORD:registry}
+
+eureka:
+  instance:
+    hostname: ${REGISTRY_SERVICE_NAME:localhost}
+  client:
+    registerWithEureka: false
+    fetchRegistry: false
+    serviceUrl:
+      defaultZone: http://${spring.security.user.name}:${spring.security.user.password}@${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+    maxThreadsForPeerReplication: 0
+    enable-self-preservation: false
+    expected-client-renewal-interval-seconds: 3
+    eviction-interval-timer-in-ms: 25000
+    renewal-threshold-update-interval-ms: 300000
+    renewal-percent-threshold: 0.5
+
+management:
+  cloudfoundry:
+    enable: false
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+        exclude: "env,beans,heapdump,flyway,threaddump,liquidbase,prometheus"
+    jmx:
+      exposure:
+        exclude: "*"
+  endpoint:
+    health:
+      show-details: when-authorized
+      status:
+        order: "fatal,down,out-of-service,unknown,up"

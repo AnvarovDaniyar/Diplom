@@ -1,0 +1,185 @@
+services:
+  postgresql:
+    container_name: postgresql
+    env_file: ./env/postgresql.env
+    image: postgres:12.5-alpine
+    hostname: postgresql
+    command: ["postgres", "-c", "log_destination=stderr",
+                          "-c", "logging_collector=on",
+                          "-c", "log_directory=pg_log",
+                          "-c", "log_filename=postgresql-%Y-%m-%d_%H%M%S.log",
+                          "-c", "log_file_mode=0600",
+                          "-c", "log_rotation_age=2d",
+                          "-c", "log_rotation_size=25MB"]
+    volumes:
+      - ./postgresql/data:/var/lib/postgresql/data
+      - ./postgresql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
+    networks:
+      online-store:
+        ipv4_address: 192.168.0.21
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 20s
+      timeout: 5s
+      retries: 2
+      start_period: 15s
+
+  common:
+    image: alpine:3.13
+    env_file:
+      - ./env/postgresql.env
+      - ./env/config-service.env
+      - ./env/registry-service.env
+    cap_drop:
+      - ALL
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 170M
+    volumes:
+      - ./logs:/var/log/online-store
+
+  config-service:
+    container_name: config-service
+    env_file: ./env/config-service.env
+    build:
+      context: ./online-store-backend
+      dockerfile: ./config-service/Dockerfile
+    image: config-service:latest
+    hostname: config-service
+    volumes:
+      - ./logs:/var/log/online-store
+    user: config-service
+    cap_drop:
+      - ALL
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 200M
+        reservations:
+          memory: 170M
+    networks:
+      online-store:
+        ipv4_address: 192.168.0.2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  registry-service:
+    container_name: registry-service
+    env_file:
+      - ./env/registry-service.env
+      - ./env/config-service.env
+    build:
+      context: ./online-store-backend
+      dockerfile: ./registry-service/Dockerfile
+    image: registry-service:latest
+    hostname: registry-service
+    user: registry-service
+    volumes:
+      - ./logs:/var/log/online-store
+    cap_drop:
+      - ALL
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 170M
+    depends_on:
+      config-service:
+        condition: service_healthy
+    networks:
+      online-store:
+        ipv4_address: 192.168.0.3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health", "--header", "Authorization: Basic cmVnaXN0cnk6cmVnaXN0cnk="]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  auth-service:
+    env_file:
+      - ./env/auth-service.env
+    container_name: auth-service
+    build:
+      context: ./online-store-backend
+      dockerfile: ./auth-service/Dockerfile
+    image: auth-service:latest
+    hostname: auth-service
+    user: auth-service
+    ports:
+      - "127.0.0.1:8090:8090"
+    extends:
+      service: common
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      registry-service:
+        condition: service_healthy
+    networks:
+      online-store:
+
+  product-service:
+    env_file:
+      - ./env/product-service.env
+    container_name: product-service
+    build:
+      context: ./online-store-backend
+      dockerfile: ./product-service/Dockerfile
+    image: product-service:latest
+    hostname: product-service
+    user: product-service
+    extends:
+      service: common
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      registry-service:
+        condition: service_healthy
+    networks:
+      online-store:
+        ipv4_address: 192.168.0.12
+
+  shopping-service:
+    env_file:
+      - ./env/shopping-service.env
+    container_name: shopping-service
+    build:
+      context: ./online-store-backend
+      dockerfile: ./shopping-service/Dockerfile
+    image: shopping-service:latest
+    hostname: shopping-service
+    user: shopping-service
+    extends:
+      service: common
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      registry-service:
+        condition: service_healthy
+    networks:
+      online-store:
+        ipv4_address: 192.168.0.13
+
+networks:
+  online-store:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "192.168.0.0/24"

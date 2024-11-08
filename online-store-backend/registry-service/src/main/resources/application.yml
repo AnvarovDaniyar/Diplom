@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: ${REGISTRY_SERVICE_NAME:registry-service}
+  config:
+    import: "configserver:"
+  cloud:
+    config:
+      #label: registry-service
+      uri: http://${CONFIG_SERVICE_NAME:localhost}:${CONFIG_SERVICE_PORT:8081}
+      username: ${CONFIG_SERVICE_USER:root}
+      password: ${CONFIG_SERVICE_USER:root}
+    fail-fast: true
+    loadbalancer:
+      ribbon:
+        enabled: false
+    circuitbreaker:
+      hystrix:
+        enabled: false
+
+server:
+  error:
+    include-message: always
+    include-binding-errors: always
+
+logging:
+  file:
+    path: /var/log/online-store/${spring.application.name}
